@@ -5,11 +5,21 @@ from sqlalchemy import create_engine
 
 import dash
 from dash import dcc, html, dash_table, Input, Output
-import plotly.express as px
 import plotly.graph_objects as go
 
 
 TABLE_NAME = "neso_sop_readiness_snapshots"
+
+
+STATUS_ORDER = ["Comfortable", "Watch", "Tight", "Critical", "Unknown"]
+
+STATUS_COLOURS = {
+    "Comfortable": "#2563eb",
+    "Watch": "#f59e0b",
+    "Tight": "#10b981",
+    "Critical": "#ef4444",
+    "Unknown": "#6b7280"
+}
 
 
 def get_database_engine():
@@ -25,13 +35,11 @@ def get_database_engine():
             1
         )
 
-    engine = create_engine(
+    return create_engine(
         database_url,
         pool_pre_ping=True,
         connect_args={"sslmode": "require"}
     )
-
-    return engine
 
 
 def load_data():
@@ -95,25 +103,6 @@ def load_data():
     return df
 
 
-def empty_figure(title):
-    fig = go.Figure()
-    fig.update_layout(
-        title=title,
-        template="plotly_white",
-        height=420,
-        annotations=[
-            dict(
-                text="No data available",
-                x=0.5,
-                y=0.5,
-                showarrow=False,
-                font=dict(size=18)
-            )
-        ]
-    )
-    return fig
-
-
 def kpi_card(title, value, subtitle=""):
     return html.Div(
         className="kpi-card",
@@ -123,6 +112,359 @@ def kpi_card(title, value, subtitle=""):
             html.Div(subtitle, className="kpi-subtitle")
         ]
     )
+
+
+def chart_card(graph_id, note_title, note_text):
+    return html.Div(
+        className="chart-card",
+        children=[
+            dcc.Graph(id=graph_id, config={"displaylogo": False}),
+            html.Div(
+                className="chart-note",
+                children=[
+                    html.Strong(note_title),
+                    html.Span(note_text)
+                ]
+            )
+        ]
+    )
+
+
+def empty_figure(title):
+    fig = go.Figure()
+    fig.update_layout(
+        title=title,
+        template="plotly_white",
+        height=430,
+        annotations=[
+            dict(
+                text="No data available for the selected filters",
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(size=16, color="#6b7280")
+            )
+        ]
+    )
+    return fig
+
+
+def apply_standard_layout(fig, title, y_title=None):
+    fig.update_layout(
+        title={
+            "text": title,
+            "x": 0.02,
+            "xanchor": "left"
+        },
+        template="plotly_white",
+        height=430,
+        margin=dict(l=55, r=30, t=70, b=55),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        hovermode="x unified",
+        font=dict(family="Arial, Helvetica, sans-serif", size=13)
+    )
+
+    fig.update_xaxes(
+        title_text="SOP datetime",
+        showgrid=True,
+        gridcolor="#eef2f7"
+    )
+
+    if y_title:
+        fig.update_yaxes(
+            title_text=y_title,
+            showgrid=True,
+            gridcolor="#eef2f7"
+        )
+
+    return fig
+
+
+def build_readiness_figure(df):
+    fig = go.Figure()
+
+    fig.add_hrect(y0=75, y1=100, fillcolor="rgba(37, 99, 235, 0.08)", line_width=0)
+    fig.add_hrect(y0=55, y1=75, fillcolor="rgba(245, 158, 11, 0.10)", line_width=0)
+    fig.add_hrect(y0=35, y1=55, fillcolor="rgba(16, 185, 129, 0.10)", line_width=0)
+    fig.add_hrect(y0=0, y1=35, fillcolor="rgba(239, 68, 68, 0.10)", line_width=0)
+
+    fig.add_trace(
+        go.Scatter(
+            x=df["sop_datetime"],
+            y=df["system_readiness_score_v2"],
+            mode="lines",
+            name="Readiness score",
+            line=dict(color="#334155", width=2),
+            hovertemplate="Time: %{x}<br>Score: %{y:.1f}<extra></extra>"
+        )
+    )
+
+    for status in STATUS_ORDER:
+        sub = df[df["system_readiness_status_v2"] == status]
+        if not sub.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=sub["sop_datetime"],
+                    y=sub["system_readiness_score_v2"],
+                    mode="markers",
+                    name=status,
+                    marker=dict(
+                        color=STATUS_COLOURS.get(status, "#6b7280"),
+                        size=8,
+                        line=dict(width=1, color="white")
+                    ),
+                    hovertemplate=(
+                        "Time: %{x}<br>"
+                        "Score: %{y:.1f}<br>"
+                        f"Status: {status}"
+                        "<extra></extra>"
+                    )
+                )
+            )
+
+    for y, label in [(75, "Comfortable"), (55, "Watch"), (35, "Tight")]:
+        fig.add_hline(
+            y=y,
+            line_dash="dash",
+            line_color="#64748b",
+            annotation_text=label,
+            annotation_position="top left"
+        )
+
+    fig.update_yaxes(range=[0, 100])
+
+    return apply_standard_layout(
+        fig,
+        "System readiness score with operational risk bands",
+        "Readiness score"
+    )
+
+
+def build_margin_figure(df):
+    fig = go.Figure()
+
+    fig.add_hrect(y0=0, y1=500, fillcolor="rgba(239, 68, 68, 0.12)", line_width=0)
+    fig.add_hrect(y0=500, y1=1000, fillcolor="rgba(245, 158, 11, 0.12)", line_width=0)
+
+    fig.add_trace(
+        go.Bar(
+            x=df["sop_datetime"],
+            y=df["operating_margin_surplus"],
+            name="Operating margin surplus",
+            marker_color="#2563eb",
+            opacity=0.75,
+            hovertemplate="Time: %{x}<br>Margin: %{y:,.0f} MW<extra></extra>"
+        )
+    )
+
+    fig.add_hline(
+        y=1000,
+        line_dash="dash",
+        line_color="#f59e0b",
+        annotation_text="Watch below 1,000 MW",
+        annotation_position="top left"
+    )
+
+    fig.add_hline(
+        y=500,
+        line_dash="dash",
+        line_color="#ef4444",
+        annotation_text="Severe below 500 MW",
+        annotation_position="bottom left"
+    )
+
+    return apply_standard_layout(
+        fig,
+        "Operating margin surplus, higher is safer",
+        "MW"
+    )
+
+
+def build_reserve_figure(df):
+    fig = go.Figure()
+
+    fig.add_hrect(y0=0, y1=0.80, fillcolor="rgba(239, 68, 68, 0.12)", line_width=0)
+    fig.add_hrect(y0=0.80, y1=0.90, fillcolor="rgba(245, 158, 11, 0.12)", line_width=0)
+
+    fig.add_trace(
+        go.Scatter(
+            x=df["sop_datetime"],
+            y=df["reserve_coverage_ratio"],
+            mode="lines+markers",
+            name="Reserve coverage ratio",
+            line=dict(color="#10b981", width=2),
+            marker=dict(size=6),
+            hovertemplate="Time: %{x}<br>Reserve coverage: %{y:.2f}<extra></extra>"
+        )
+    )
+
+    fig.add_hline(
+        y=1.0,
+        line_dash="solid",
+        line_color="#334155",
+        annotation_text="1.00 means reserve availability equals requirement",
+        annotation_position="top left"
+    )
+
+    fig.add_hline(
+        y=0.90,
+        line_dash="dash",
+        line_color="#f59e0b",
+        annotation_text="Watch below 0.90",
+        annotation_position="bottom left"
+    )
+
+    fig.add_hline(
+        y=0.80,
+        line_dash="dash",
+        line_color="#ef4444",
+        annotation_text="Severe below 0.80",
+        annotation_position="bottom left"
+    )
+
+    return apply_standard_layout(
+        fig,
+        "Standing reserve coverage ratio",
+        "Availability / requirement"
+    )
+
+
+def build_status_mix_figure(df):
+    counts = (
+        df["system_readiness_status_v2"]
+        .fillna("Unknown")
+        .value_counts()
+        .reindex(STATUS_ORDER)
+        .dropna()
+        .reset_index()
+    )
+
+    counts.columns = ["status", "records"]
+
+    colours = [STATUS_COLOURS.get(status, "#6b7280") for status in counts["status"]]
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Bar(
+            x=counts["status"],
+            y=counts["records"],
+            marker_color=colours,
+            text=counts["records"],
+            textposition="outside",
+            hovertemplate="Status: %{x}<br>Records: %{y}<extra></extra>"
+        )
+    )
+
+    fig.update_layout(
+        title={
+            "text": "Readiness status mix in the selected view",
+            "x": 0.02,
+            "xanchor": "left"
+        },
+        template="plotly_white",
+        height=430,
+        margin=dict(l=55, r=30, t=70, b=55),
+        showlegend=False,
+        font=dict(family="Arial, Helvetica, sans-serif", size=13)
+    )
+
+    fig.update_xaxes(title_text="Readiness status")
+    fig.update_yaxes(title_text="Number of SOP records", showgrid=True, gridcolor="#eef2f7")
+
+    return fig
+
+
+def build_cardinal_risk_figure(df):
+    cardinal_summary = (
+        df
+        .groupby("cardinal_point", as_index=False)
+        .agg(
+            average_readiness=("system_readiness_score_v2", "mean"),
+            average_margin=("operating_margin_surplus", "mean"),
+            severe_flags=("severe_flag_count", "sum"),
+            watch_flags=("watch_flag_count", "sum"),
+            records=("cardinal_point", "count")
+        )
+        .sort_values("average_readiness", ascending=True)
+    )
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Bar(
+            y=cardinal_summary["cardinal_point"],
+            x=cardinal_summary["average_readiness"],
+            orientation="h",
+            marker=dict(
+                color=cardinal_summary["average_readiness"],
+                colorscale="RdYlGn",
+                cmin=0,
+                cmax=100,
+                colorbar=dict(title="Average score")
+            ),
+            text=[
+                f"{score:.1f} | severe flags: {int(flags)}"
+                for score, flags in zip(
+                    cardinal_summary["average_readiness"],
+                    cardinal_summary["severe_flags"]
+                )
+            ],
+            textposition="auto",
+            hovertemplate=(
+                "Cardinal point: %{y}<br>"
+                "Average readiness: %{x:.1f}<br>"
+                "<extra></extra>"
+            )
+        )
+    )
+
+    fig.add_vline(
+        x=75,
+        line_dash="dash",
+        line_color="#2563eb",
+        annotation_text="Comfortable threshold",
+        annotation_position="top"
+    )
+
+    fig.add_vline(
+        x=55,
+        line_dash="dash",
+        line_color="#f59e0b",
+        annotation_text="Watch threshold",
+        annotation_position="bottom"
+    )
+
+    fig.update_layout(
+        title={
+            "text": "Which cardinal points are riskiest?",
+            "x": 0.02,
+            "xanchor": "left"
+        },
+        template="plotly_white",
+        height=430,
+        margin=dict(l=80, r=30, t=70, b=55),
+        font=dict(family="Arial, Helvetica, sans-serif", size=13)
+    )
+
+    fig.update_xaxes(title_text="Average readiness score", range=[0, 100])
+    fig.update_yaxes(title_text="Cardinal point")
+
+    return fig
+
+
+def format_number(value, decimals=0):
+    if pd.isna(value):
+        return "N/A"
+    if decimals == 0:
+        return f"{value:,.0f}"
+    return f"{value:,.{decimals}f}"
 
 
 app = dash.Dash(__name__)
@@ -147,6 +489,37 @@ app.layout = html.Div(
                 html.Div(
                     className="hero-badge",
                     children="NESO SOP • Supabase • GitHub Actions • Dash"
+                )
+            ]
+        ),
+
+        html.Div(
+            className="guide",
+            children=[
+                html.H2("How to use this dashboard"),
+                html.P(
+                    "This dashboard helps you understand whether the GB electricity system has enough operational margin, reserve and dispatch headroom for each NESO System Operating Plan period."
+                ),
+                html.Div(
+                    className="guide-grid",
+                    children=[
+                        html.Div([
+                            html.H3("1. Start with the KPI cards"),
+                            html.P("Use the cards at the top to see the latest SOP time, readiness score, margin, reserve coverage and dispatch headroom.")
+                        ]),
+                        html.Div([
+                            html.H3("2. Read the readiness score"),
+                            html.P("Higher is better. Comfortable means the system has stronger readiness. Watch, Tight and Critical show increasing levels of operational pressure.")
+                        ]),
+                        html.Div([
+                            html.H3("3. Use the filters"),
+                            html.P("Filter by cardinal point, readiness status or recent record count to focus on a specific operating condition.")
+                        ]),
+                        html.Div([
+                            html.H3("4. Check the latest table"),
+                            html.P("The table shows the most recent SOP records and highlights risk status using simple colours.")
+                        ])
+                    ]
                 )
             ]
         ),
@@ -178,6 +551,22 @@ app.layout = html.Div(
                 ),
                 html.Div(
                     children=[
+                        html.Label("Records shown"),
+                        dcc.Dropdown(
+                            id="record-window",
+                            options=[
+                                {"label": "Latest 50 records", "value": "50"},
+                                {"label": "Latest 100 records", "value": "100"},
+                                {"label": "Latest 200 records", "value": "200"},
+                                {"label": "All records", "value": "All"}
+                            ],
+                            value="100",
+                            clearable=False
+                        )
+                    ]
+                ),
+                html.Div(
+                    children=[
                         html.Label("Refresh data"),
                         html.Button("Refresh now", id="refresh-button", n_clicks=0)
                     ]
@@ -196,10 +585,31 @@ app.layout = html.Div(
         html.Div(
             className="chart-grid",
             children=[
-                dcc.Graph(id="readiness-trend"),
-                dcc.Graph(id="margin-trend"),
-                dcc.Graph(id="reserve-trend"),
-                dcc.Graph(id="cardinal-risk")
+                chart_card(
+                    "readiness-trend",
+                    "How to read this: ",
+                    "The line shows readiness from 0 to 100. Blue areas are comfortable, amber means watch, green means tight and red means critical."
+                ),
+                chart_card(
+                    "margin-trend",
+                    "How to read this: ",
+                    "Operating margin is the spare room available to manage system changes. Higher values are better. Bars below 1,000 MW require attention."
+                ),
+                chart_card(
+                    "reserve-trend",
+                    "How to read this: ",
+                    "Reserve coverage compares available reserve with required reserve. A value of 1.00 means availability equals requirement."
+                ),
+                chart_card(
+                    "status-mix",
+                    "How to read this: ",
+                    "This shows how many SOP records in the selected view fall into Comfortable, Watch, Tight or Critical status."
+                ),
+                chart_card(
+                    "cardinal-risk",
+                    "How to read this: ",
+                    "Lower average readiness means higher risk. This chart helps identify which cardinal points have weaker operating conditions."
+                )
             ]
         ),
 
@@ -207,6 +617,9 @@ app.layout = html.Div(
             className="section",
             children=[
                 html.H2("Latest SOP readiness records"),
+                html.P(
+                    "Use this table to inspect the latest records behind the charts. Rows are coloured by readiness status so that risk conditions are easier to spot."
+                ),
                 dash_table.DataTable(
                     id="latest-table",
                     page_size=10,
@@ -215,7 +628,9 @@ app.layout = html.Div(
                         "fontFamily": "Arial",
                         "fontSize": "13px",
                         "padding": "8px",
-                        "textAlign": "left"
+                        "textAlign": "left",
+                        "whiteSpace": "normal",
+                        "height": "auto"
                     },
                     style_header={
                         "fontWeight": "bold",
@@ -223,24 +638,24 @@ app.layout = html.Div(
                     },
                     style_data_conditional=[
                         {
-                            "if": {"filter_query": "{system_readiness_status_v2} = Critical"},
+                            "if": {"filter_query": '{system_readiness_status_v2} = "Critical"'},
                             "backgroundColor": "#fee2e2",
                             "color": "#7f1d1d"
                         },
                         {
-                            "if": {"filter_query": "{system_readiness_status_v2} = Tight"},
-                            "backgroundColor": "#ffedd5",
-                            "color": "#7c2d12"
+                            "if": {"filter_query": '{system_readiness_status_v2} = "Tight"'},
+                            "backgroundColor": "#dcfce7",
+                            "color": "#14532d"
                         },
                         {
-                            "if": {"filter_query": "{system_readiness_status_v2} = Watch"},
+                            "if": {"filter_query": '{system_readiness_status_v2} = "Watch"'},
                             "backgroundColor": "#fef9c3",
                             "color": "#713f12"
                         },
                         {
-                            "if": {"filter_query": "{system_readiness_status_v2} = Comfortable"},
-                            "backgroundColor": "#dcfce7",
-                            "color": "#14532d"
+                            "if": {"filter_query": '{system_readiness_status_v2} = "Comfortable"'},
+                            "backgroundColor": "#dbeafe",
+                            "color": "#1e3a8a"
                         }
                     ]
                 )
@@ -261,8 +676,6 @@ app.layout = html.Div(
 @app.callback(
     Output("cardinal-filter", "options"),
     Output("status-filter", "options"),
-    Output("cardinal-filter", "value"),
-    Output("status-filter", "value"),
     Input("auto-refresh", "n_intervals"),
     Input("refresh-button", "n_clicks")
 )
@@ -275,18 +688,17 @@ def update_filter_options(_, __):
     if not df.empty:
         cardinal_options += [
             {"label": str(x), "value": str(x)}
-            for x in sorted(df["cardinal_point"].dropna().unique())
+            for x in sorted(df["cardinal_point"].dropna().astype(str).unique())
         ]
 
-        status_order = ["Comfortable", "Watch", "Tight", "Critical", "Unknown"]
-        statuses = [s for s in status_order if s in set(df["system_readiness_status_v2"].dropna())]
-
+        available_statuses = set(df["system_readiness_status_v2"].dropna().astype(str).unique())
         status_options += [
-            {"label": str(x), "value": str(x)}
-            for x in statuses
+            {"label": status, "value": status}
+            for status in STATUS_ORDER
+            if status in available_statuses
         ]
 
-    return cardinal_options, status_options, "All", "All"
+    return cardinal_options, status_options
 
 
 @app.callback(
@@ -294,29 +706,34 @@ def update_filter_options(_, __):
     Output("readiness-trend", "figure"),
     Output("margin-trend", "figure"),
     Output("reserve-trend", "figure"),
+    Output("status-mix", "figure"),
     Output("cardinal-risk", "figure"),
     Output("latest-table", "data"),
     Output("latest-table", "columns"),
     Input("cardinal-filter", "value"),
     Input("status-filter", "value"),
+    Input("record-window", "value"),
     Input("auto-refresh", "n_intervals"),
     Input("refresh-button", "n_clicks")
 )
-def update_dashboard(selected_cardinal, selected_status, _, __):
+def update_dashboard(selected_cardinal, selected_status, selected_window, _, __):
     df = load_data()
 
     if df.empty:
         return (
             [
-                kpi_card("Total records", "0"),
+                kpi_card("Records shown", "0"),
                 kpi_card("Latest SOP time", "N/A"),
-                kpi_card("Latest readiness", "N/A"),
-                kpi_card("Latest margin", "N/A")
+                kpi_card("Readiness score", "N/A"),
+                kpi_card("Operating margin", "N/A"),
+                kpi_card("Reserve coverage", "N/A"),
+                kpi_card("Dispatch headroom", "N/A")
             ],
-            empty_figure("System readiness trend"),
-            empty_figure("Operating margin trend"),
-            empty_figure("Reserve coverage trend"),
-            empty_figure("Average readiness by cardinal point"),
+            empty_figure("System readiness score"),
+            empty_figure("Operating margin"),
+            empty_figure("Reserve coverage"),
+            empty_figure("Readiness status mix"),
+            empty_figure("Cardinal point risk"),
             [],
             []
         )
@@ -329,137 +746,47 @@ def update_dashboard(selected_cardinal, selected_status, _, __):
     if selected_status and selected_status != "All":
         filtered_df = filtered_df[filtered_df["system_readiness_status_v2"].astype(str) == selected_status]
 
+    filtered_df = filtered_df.sort_values("sop_datetime")
+
+    if selected_window and selected_window != "All":
+        filtered_df = filtered_df.tail(int(selected_window))
+
     if filtered_df.empty:
         return (
             [
-                kpi_card("Filtered records", "0"),
+                kpi_card("Records shown", "0"),
                 kpi_card("Latest SOP time", "N/A"),
-                kpi_card("Latest readiness", "N/A"),
-                kpi_card("Latest margin", "N/A")
+                kpi_card("Readiness score", "N/A"),
+                kpi_card("Operating margin", "N/A"),
+                kpi_card("Reserve coverage", "N/A"),
+                kpi_card("Dispatch headroom", "N/A")
             ],
-            empty_figure("System readiness trend"),
-            empty_figure("Operating margin trend"),
-            empty_figure("Reserve coverage trend"),
-            empty_figure("Average readiness by cardinal point"),
+            empty_figure("System readiness score"),
+            empty_figure("Operating margin"),
+            empty_figure("Reserve coverage"),
+            empty_figure("Readiness status mix"),
+            empty_figure("Cardinal point risk"),
             [],
             []
         )
 
-    latest = filtered_df.sort_values("sop_datetime").iloc[-1]
+    latest = filtered_df.iloc[-1]
 
     latest_time = latest["sop_datetime"].strftime("%d %b %Y %H:%M UTC")
-    latest_score = f"{latest['system_readiness_score_v2']:.1f}"
+    latest_score = format_number(latest["system_readiness_score_v2"], 1)
     latest_status = latest["system_readiness_status_v2"]
-    latest_margin = f"{latest['operating_margin_surplus']:,.0f} MW"
-    latest_reserve = f"{latest['reserve_coverage_ratio']:.2f}"
-    latest_headroom = f"{latest['dispatch_headroom_mw']:,.0f} MW"
+    latest_margin = f"{format_number(latest['operating_margin_surplus'], 0)} MW"
+    latest_reserve = format_number(latest["reserve_coverage_ratio"], 2)
+    latest_headroom = f"{format_number(latest['dispatch_headroom_mw'], 0)} MW"
 
     kpis = [
-        kpi_card("Total records", f"{len(filtered_df):,}", "Filtered SOP records"),
+        kpi_card("Records shown", f"{len(filtered_df):,}", f"{len(df):,} total records in database"),
         kpi_card("Latest SOP time", latest_time, f"Cardinal point: {latest['cardinal_point']}"),
         kpi_card("Readiness score", latest_score, latest_status),
-        kpi_card("Operating margin", latest_margin, "Surplus against requirement"),
-        kpi_card("Reserve coverage", latest_reserve, "Availability / requirement"),
+        kpi_card("Operating margin", latest_margin, "Higher is safer"),
+        kpi_card("Reserve coverage", latest_reserve, "1.00 means enough reserve"),
         kpi_card("Dispatch headroom", latest_headroom, "TEMX minus TEOL")
     ]
-
-    readiness_fig = px.line(
-        filtered_df,
-        x="sop_datetime",
-        y="system_readiness_score_v2",
-        color="system_readiness_status_v2",
-        markers=True,
-        title="System readiness score over time",
-        labels={
-            "sop_datetime": "SOP datetime",
-            "system_readiness_score_v2": "Readiness score",
-            "system_readiness_status_v2": "Status"
-        }
-    )
-
-    for y, label in [(75, "Comfortable"), (55, "Watch"), (35, "Tight")]:
-        readiness_fig.add_hline(
-            y=y,
-            line_dash="dash",
-            annotation_text=label,
-            annotation_position="top left"
-        )
-
-    readiness_fig.update_layout(template="plotly_white", height=430)
-
-    margin_fig = go.Figure()
-    margin_fig.add_trace(
-        go.Scatter(
-            x=filtered_df["sop_datetime"],
-            y=filtered_df["operating_margin_surplus"],
-            mode="lines+markers",
-            name="Operating margin surplus"
-        )
-    )
-    margin_fig.add_trace(
-        go.Scatter(
-            x=filtered_df["sop_datetime"],
-            y=filtered_df["trigger_level"],
-            mode="lines",
-            name="Trigger level"
-        )
-    )
-    margin_fig.update_layout(
-        title="Operating margin surplus versus trigger level",
-        xaxis_title="SOP datetime",
-        yaxis_title="MW",
-        template="plotly_white",
-        height=430
-    )
-
-    reserve_fig = go.Figure()
-    reserve_fig.add_trace(
-        go.Scatter(
-            x=filtered_df["sop_datetime"],
-            y=filtered_df["standing_reserve_requirement"],
-            mode="lines",
-            name="Reserve requirement"
-        )
-    )
-    reserve_fig.add_trace(
-        go.Scatter(
-            x=filtered_df["sop_datetime"],
-            y=filtered_df["standing_reserve_availability"],
-            mode="lines+markers",
-            name="Reserve availability"
-        )
-    )
-    reserve_fig.update_layout(
-        title="Standing reserve availability versus requirement",
-        xaxis_title="SOP datetime",
-        yaxis_title="MW",
-        template="plotly_white",
-        height=430
-    )
-
-    cardinal_summary = (
-        filtered_df
-        .groupby("cardinal_point", as_index=False)
-        .agg(
-            average_readiness=("system_readiness_score_v2", "mean"),
-            average_margin=("operating_margin_surplus", "mean"),
-            severe_flags=("severe_flag_count", "sum")
-        )
-        .sort_values("average_readiness")
-    )
-
-    cardinal_fig = px.bar(
-        cardinal_summary,
-        x="cardinal_point",
-        y="average_readiness",
-        color="average_readiness",
-        title="Average readiness score by cardinal point",
-        labels={
-            "cardinal_point": "Cardinal point",
-            "average_readiness": "Average readiness score"
-        }
-    )
-    cardinal_fig.update_layout(template="plotly_white", height=430)
 
     latest_table = (
         filtered_df
@@ -484,6 +811,13 @@ def update_dashboard(selected_cardinal, selected_status, _, __):
     latest_table["sop_datetime"] = latest_table["sop_datetime"].dt.strftime("%d %b %Y %H:%M")
     latest_table["collected_at"] = latest_table["collected_at"].dt.strftime("%d %b %Y %H:%M")
 
+    latest_table["total_sop_demand"] = latest_table["total_sop_demand"].map(lambda x: format_number(x, 0))
+    latest_table["operating_margin_surplus"] = latest_table["operating_margin_surplus"].map(lambda x: format_number(x, 0))
+    latest_table["reserve_coverage_ratio"] = latest_table["reserve_coverage_ratio"].map(lambda x: format_number(x, 2))
+    latest_table["dispatch_headroom_mw"] = latest_table["dispatch_headroom_mw"].map(lambda x: format_number(x, 0))
+    latest_table["absolute_imbalance_mw"] = latest_table["absolute_imbalance_mw"].map(lambda x: format_number(x, 0))
+    latest_table["system_readiness_score_v2"] = latest_table["system_readiness_score_v2"].map(lambda x: format_number(x, 1))
+
     columns = [
         {"name": "SOP datetime", "id": "sop_datetime"},
         {"name": "Cardinal point", "id": "cardinal_point"},
@@ -500,10 +834,11 @@ def update_dashboard(selected_cardinal, selected_status, _, __):
 
     return (
         kpis,
-        readiness_fig,
-        margin_fig,
-        reserve_fig,
-        cardinal_fig,
+        build_readiness_figure(filtered_df),
+        build_margin_figure(filtered_df),
+        build_reserve_figure(filtered_df),
+        build_status_mix_figure(filtered_df),
+        build_cardinal_risk_figure(filtered_df),
         latest_table.to_dict("records"),
         columns
     )
@@ -526,7 +861,7 @@ app.index_string = """
             }
 
             .page {
-                max-width: 1400px;
+                max-width: 1450px;
                 margin: 0 auto;
                 padding: 28px;
             }
@@ -534,8 +869,8 @@ app.index_string = """
             .hero {
                 background: linear-gradient(135deg, #0f172a, #1e3a8a);
                 color: white;
-                padding: 32px;
-                border-radius: 24px;
+                padding: 34px;
+                border-radius: 26px;
                 display: flex;
                 justify-content: space-between;
                 gap: 24px;
@@ -565,9 +900,48 @@ app.index_string = """
                 color: #e0f2fe;
             }
 
+            .guide {
+                background: white;
+                margin-top: 24px;
+                padding: 24px;
+                border-radius: 20px;
+                box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+                border: 1px solid #e5e7eb;
+            }
+
+            .guide h2 {
+                margin-top: 0;
+                margin-bottom: 8px;
+            }
+
+            .guide p {
+                color: #4b5563;
+                line-height: 1.55;
+            }
+
+            .guide-grid {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 16px;
+                margin-top: 18px;
+            }
+
+            .guide-grid div {
+                background: #f8fafc;
+                border: 1px solid #e5e7eb;
+                border-radius: 16px;
+                padding: 16px;
+            }
+
+            .guide-grid h3 {
+                margin-top: 0;
+                margin-bottom: 8px;
+                font-size: 15px;
+            }
+
             .controls {
                 display: grid;
-                grid-template-columns: 1fr 1fr 180px;
+                grid-template-columns: 1fr 1fr 1fr 180px;
                 gap: 18px;
                 background: white;
                 margin: 24px 0;
@@ -637,11 +1011,31 @@ app.index_string = """
                 margin-bottom: 24px;
             }
 
-            .chart-grid .dash-graph {
+            .chart-card {
                 background: white;
-                border-radius: 18px;
-                padding: 12px;
+                border-radius: 20px;
+                padding: 14px;
                 box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+                border: 1px solid #e5e7eb;
+            }
+
+            .chart-card:first-child {
+                grid-column: span 2;
+            }
+
+            .chart-note {
+                background: #f8fafc;
+                border-left: 4px solid #2563eb;
+                padding: 12px 14px;
+                border-radius: 10px;
+                color: #4b5563;
+                font-size: 13px;
+                line-height: 1.45;
+                margin: 0 8px 8px 8px;
+            }
+
+            .chart-note strong {
+                color: #111827;
             }
 
             .section {
@@ -650,10 +1044,15 @@ app.index_string = """
                 border-radius: 18px;
                 box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
                 margin-bottom: 24px;
+                border: 1px solid #e5e7eb;
             }
 
             .section h2 {
                 margin-top: 0;
+            }
+
+            .section p {
+                color: #4b5563;
             }
 
             .footer {
@@ -663,7 +1062,7 @@ app.index_string = """
                 padding: 20px;
             }
 
-            @media (max-width: 1100px) {
+            @media (max-width: 1200px) {
                 .kpi-grid {
                     grid-template-columns: repeat(3, 1fr);
                 }
@@ -672,8 +1071,16 @@ app.index_string = """
                     grid-template-columns: 1fr;
                 }
 
+                .chart-card:first-child {
+                    grid-column: span 1;
+                }
+
                 .controls {
-                    grid-template-columns: 1fr;
+                    grid-template-columns: 1fr 1fr;
+                }
+
+                .guide-grid {
+                    grid-template-columns: 1fr 1fr;
                 }
 
                 .hero {
@@ -691,8 +1098,20 @@ app.index_string = """
                     grid-template-columns: 1fr;
                 }
 
+                .controls {
+                    grid-template-columns: 1fr;
+                }
+
+                .guide-grid {
+                    grid-template-columns: 1fr;
+                }
+
                 .hero h1 {
                     font-size: 24px;
+                }
+
+                .hero-badge {
+                    white-space: normal;
                 }
             }
         </style>
