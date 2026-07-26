@@ -2,3 +2,7 @@ pandas
 numpy
 requests
 psycopg2-binary
+SQLAlchemy
+dash
+plotly
+gunicorn
