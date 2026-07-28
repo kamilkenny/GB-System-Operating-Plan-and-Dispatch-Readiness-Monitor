@@ -1,46 +1,50 @@
 # NESO Dispatch Readiness and Operating Margin Intelligence Dashboard
 
-This project collects and analyses NESO System Operating Plan data to monitor dispatch readiness, operating margin, reserve sufficiency, imbalance pressure and system readiness conditions for Great Britain.
+A cloud-based electricity-system monitoring application built using publicly available National Energy System Operator System Operating Plan data for Great Britain.
 
-## Project workflow
+The project collects, processes and stores System Operating Plan records, calculates operational readiness indicators and presents them through an interactive Plotly Dash dashboard.
 
-NESO System Operating Plan API  
-↓  
-Python collector  
-↓  
-Supabase PostgreSQL database  
-↓  
-GitHub Actions automation  
-↓  
-Dash dashboard and Render deployment
+## Live application
 
-## Current features
+[gb-dispatch-readiness-dashboard](https://neso-gb-dispatch-readiness-kamil-hpaqe7d2eucebfa2.germanywestcentral-01.azurewebsites.net)
 
-- Collects latest NESO SOP records from the NESO open data API
-- Cleans demand, reserve, margin, imbalance and dispatch availability fields
-- Calculates derived readiness indicators
-- Stores results in Supabase PostgreSQL
-- Updates existing records without duplication
-- Supports scheduled automation through GitHub Actions
+> The application is hosted on the Azure App Service Free tier. The first load may take slightly longer after a period of inactivity.
 
-## Main derived indicators
+---
 
-- Reserve coverage ratio
-- Reserve gap MW
-- Dispatch headroom MW
-- Margin versus trigger level
-- Absolute imbalance MW
-- System readiness score
-- Readiness status: Comfortable, Watch, Tight or Critical
-- Operational attention flags
+## Project scope
 
-## Tech stack
+The dashboard provides an analytical view of:
 
-- Python
-- Pandas
-- NumPy
-- Requests
-- PostgreSQL
-- Supabase
-- GitHub Actions
-- Dash and Render planned for deployment
+- electricity-system demand
+- operating-margin conditions
+- standing-reserve sufficiency
+- reserve shortfall or surplus
+- system imbalance
+- dispatch headroom
+- Cardinal Point performance
+- operational Watch and Severe conditions
+- overall system-readiness status
+
+The application is designed as an independent analytical and decision-support prototype. It is not an official NESO operational platform.
+
+---
+
+## Data pipeline
+
+```text
+NESO System Operating Plan API
+                ↓
+Python data collector
+                ↓
+Data cleaning and transformation
+                ↓
+Operational indicator calculation
+                ↓
+Supabase PostgreSQL database
+                ↓
+Plotly Dash dashboard
+                ↓
+GitHub Actions CI/CD
+                ↓
+Microsoft Azure App Service
