@@ -8,7 +8,7 @@ The project collects, processes and stores System Operating Plan records, calcul
 
 [gb-dispatch-readiness-dashboard](https://neso-gb-dispatch-readiness-kamil-hpaqe7d2eucebfa2.germanywestcentral-01.azurewebsites.net)
 
-> The application is hosted on the Azure App Service Free tier. The first load may take slightly longer after a period of inactivity.
+> The application is hosted on the Azure App Service.
 
 ---
 
