@@ -1,4 +1,5 @@
 # Great Britain Dispatch Readiness and Operating Margin Intelligence Dashboard
+<img width="1672" height="941" alt="dispatch" src="https://github.com/user-attachments/assets/3684697c-6ded-4454-8a1b-75d46cf77725" />
 
 A cloud-based electricity-system monitoring application built using publicly available National Energy System Operator System Operating Plan data for Great Britain.
 
