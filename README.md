@@ -10,7 +10,8 @@ The project collects, processes and stores System Operating Plan records, calcul
 [gb-dispatch-readiness-dashboard](https://neso-gb-dispatch-readiness-kamil-hpaqe7d2eucebfa2.germanywestcentral-01.azurewebsites.net)
 
 > The application is hosted on the Azure App Service.
-
+📖 Read the full Medium article
+https://lnkd.in/dqvsp8Gb 
 ---
 
 ## Project scope
