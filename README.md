@@ -1,4 +1,4 @@
-# NESO Dispatch Readiness and Operating Margin Intelligence Dashboard
+# Great Britain Dispatch Readiness and Operating Margin Intelligence Dashboard
 
 A cloud-based electricity-system monitoring application built using publicly available National Energy System Operator System Operating Plan data for Great Britain.
 
