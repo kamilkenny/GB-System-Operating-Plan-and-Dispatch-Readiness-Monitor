@@ -1,4 +1,8 @@
 # Great Britain Dispatch Readiness and Operating Margin Intelligence Dashboard
+
+<img width="1232" height="882" alt="neso" src="https://github.com/user-attachments/assets/dae490ea-5068-4343-a33e-1e222dd0b6b3" />
+
+
 <img width="1536" height="855" alt="dispatch monitoring" src="https://github.com/user-attachments/assets/76c62332-97c3-49db-89e3-e7a7e0cdaaff" />
 
 A cloud-based electricity-system monitoring application built using publicly available National Energy System Operator System Operating Plan data for Great Britain.
